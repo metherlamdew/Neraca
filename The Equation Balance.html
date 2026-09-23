@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Equation Balance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#25332f; --panel:#2f403b; --panel-2:#354841;
+    --chalk:#f4efe3; --chalk-dim:#b9c2b6;
+    --brass:#c9a227; --brass-dim:#8f7419;
+    --x:#4fb0a5; --x-dark:#2f6a63;
+    --c:#e8795a; --c-dark:#a24d34;
+    --line:#465550;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--chalk);
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    padding:env(safe-area-inset-top,0) 20px env(safe-area-inset-bottom,0);
+    min-height:100vh;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:36px 0 60px;}
+  header{text-align:center;margin-bottom:28px;}
+  h1{
+    font-family:'Patrick Hand',cursive; font-weight:400;
+    font-size:2.7rem; margin:0 0 6px; letter-spacing:.5px;
+  }
+  .sub{color:var(--chalk-dim); font-size:1.02rem; margin:0 auto; max-width:560px;}
+  .grid{display:grid; grid-template-columns:1.2fr 1fr; gap:28px; align-items:start;}
+  @media (max-width:860px){ .grid{grid-template-columns:1fr;} }
+
+  .scale-panel{background:var(--panel); border-radius:18px; padding:22px; border:1px solid var(--line);}
+  svg{width:100%; height:auto; display:block; overflow:visible;}
+  #beamGroup{transform-box:fill-box; transform-origin:320px 285px; transition:transform .5s cubic-bezier(.34,1.4,.4,1);}
+  .tile-x rect{fill:var(--x); stroke:var(--x-dark); stroke-width:2;}
+  .tile-x text{fill:#0d2320; font-weight:700; font-size:16px;}
+  .tile-c circle{fill:var(--c); stroke:var(--c-dark); stroke-width:2;}
+  .tile-c text{fill:#3a160b; font-weight:700; font-size:13px;}
+  .pan.bump{animation:bump .3s ease;}
+  @keyframes bump{ 0%{transform:translateY(0)} 40%{transform:translateY(5px)} 100%{transform:translateY(0)} }
+
+  .status{text-align:center; font-size:.92rem; color:var(--chalk-dim); margin-top:4px; height:1.2em;}
+  .equation{
+    text-align:center; font-size:1.7rem; font-weight:600; margin-top:6px;
+    letter-spacing:.5px; color:var(--chalk);
+  }
+  .equation .eq-sign{color:var(--brass); margin:0 10px;}
+
+  section.control-panel > div{
+    background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    padding:18px 20px; margin-bottom:18px;
+  }
+  h2{
+    font-family:'Patrick Hand',cursive; font-weight:400; font-size:1.35rem;
+    margin:0 0 12px; color:var(--brass);
+  }
+  h3{font-size:.82rem; text-transform:none; color:var(--chalk-dim); margin:0 0 8px; font-weight:600;}
+  .eq-inputs{display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:1.05rem; margin-bottom:14px;}
+  .eq-inputs input{
+    width:46px; padding:6px 4px; text-align:center; border-radius:6px;
+    border:1px solid var(--line); background:#1c2724; color:var(--chalk); font-size:1rem;
+  }
+  button{
+    font-family:inherit; font-size:.9rem; font-weight:600; cursor:pointer;
+    border:none; border-radius:9px; padding:9px 12px; margin:4px 6px 0 0;
+    background:var(--x); color:#0d2320; transition:opacity .15s, transform .1s;
+  }
+  button:hover:not(:disabled){transform:translateY(-1px);}
+  button:disabled{opacity:.35; cursor:not-allowed;}
+  #applyEq{background:var(--brass); width:100%; margin-top:2px;}
+  #resetBtn{background:transparent; border:1px solid var(--line); color:var(--chalk-dim); width:100%; margin-top:6px;}
+  #divide{background:var(--c);}
+  .free-cols{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .free-cols button{width:100%; margin:0 0 8px; padding:9px 6px;}
+
+  .log ol{margin:0; padding-left:20px; max-height:150px; overflow-y:auto; font-size:.9rem; color:var(--chalk-dim);}
+  .log li{margin-bottom:6px;}
+  .log li:last-child{color:var(--chalk);}
+
+  .result{
+    background:linear-gradient(135deg,var(--brass-dim),var(--brass));
+    color:#241d05; border-radius:14px; padding:16px 18px; font-weight:600;
+  }
+  .result .big{font-family:'Patrick Hand',cursive; font-size:1.6rem; display:block; margin-bottom:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>The Equation Balance</h1>
+    <p class="sub">Each x-tile has a real, hidden weight. Move tiles freely and watch the scale respond — an equation is only true when both pans actually weigh the same.</p>
+  </header>
+
+  <main class="grid">
+    <section class="scale-panel">
+      <svg id="scaleSvg" viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg">
+        <path d="M300,332 L340,332 L320,296 Z" fill="var(--brass)"/>
+        <rect x="316" y="332" width="8" height="18" fill="var(--brass)"/>
+        <g id="beamGroup">
+          <rect x="90" y="278" width="460" height="9" rx="4" fill="var(--brass)"/>
+          <line x1="140" y1="283" x2="140" y2="150" stroke="var(--line)" stroke-width="2"/>
+          <line x1="500" y1="283" x2="500" y2="150" stroke="var(--line)" stroke-width="2"/>
+          <rect x="58" y="150" width="164" height="176" rx="12" fill="var(--panel-2)" stroke="var(--line)" stroke-width="2" stroke-dasharray="5 5"/>
+          <rect x="418" y="150" width="164" height="176" rx="12" fill="var(--panel-2)" stroke="var(--line)" stroke-width="2" stroke-dasharray="5 5"/>
+          <g id="leftPan" class="pan"></g>
+          <g id="rightPan" class="pan"></g>
+        </g>
+      </svg>
+      <div class="status" id="statusLine"></div>
+      <div class="equation" id="equationDisplay"></div>
+    </section>
+
+    <section class="control-panel">
+      <div class="setup">
+        <h2>Set an equation</h2>
+        <div class="eq-inputs">
+          <input type="number" id="xL" min="0" max="6" value="2">x +
+          <input type="number" id="cL" min="0" max="15" value="5">
+          <span class="eq-sign">=</span>
+          <input type="number" id="xR" min="0" max="6" value="1">x +
+          <input type="number" id="cR" min="0" max="15" value="9">
+        </div>
+        <button id="applyEq">Use this equation</button>
+      </div>
+
+      <div class="free">
+        <h2>Move tiles freely</h2>
+        <div class="free-cols">
+          <div>
+            <h3>Left pan</h3>
+            <button data-side="L" data-what="x" data-amt="1">+ x</button>
+            <button data-side="L" data-what="x" data-amt="-1">− x</button>
+            <button data-side="L" data-what="c" data-amt="1">+ 1</button>
+            <button data-side="L" data-what="c" data-amt="-1">− 1</button>
+          </div>
+          <div>
+            <h3>Right pan</h3>
+            <button data-side="R" data-what="x" data-amt="1">+ x</button>
+            <button data-side="R" data-what="x" data-amt="-1">− x</button>
+            <button data-side="R" data-what="c" data-amt="1">+ 1</button>
+            <button data-side="R" data-what="c" data-amt="-1">− 1</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <h2>Balance moves</h2>
+        <button id="elimX">Remove x from both sides</button>
+        <button id="elimC">Remove a number from both sides</button>
+        <button id="divide">Divide both sides</button>
+        <button id="resetBtn">Start over</button>
+      </div>
+
+      <div class="log">
+        <h2>Steps so far</h2>
+        <ol id="stepLog"></ol>
+      </div>
+
+      <div class="result" id="resultBox" hidden></div>
+    </section>
+  </main>
+</div>
+
+<script>
+let state, origState, steps, hiddenX;
+
+function sideText(x,c){
+  const parts=[];
+  if(x>0) parts.push(x===1 ? "x" : x+"x");
+  if(c>0 || x===0) parts.push(String(c));
+  return parts.join(" + ");
+}
+function log(msg){
+  steps.push(msg);
+  const ol=document.getElementById("stepLog");
+  ol.innerHTML = steps.map(s=>`<li>${s}</li>`).join("");
+  ol.scrollTop = ol.scrollHeight;
+}
+function bump(){
+  ["leftPan","rightPan"].forEach(id=>{
+    const el=document.getElementById(id);
+    el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
+  });
+}
+function renderPan(groupId, xCount, cCount){
+  const g=document.getElementById(groupId);
+  g.innerHTML="";
+  const originX = groupId==="leftPan" ? 68 : 428;
+  const originY = 305;
+  const perRow=4, step=36;
+  let i=0;
+  for(let k=0;k<xCount;k++,i++){
+    const row=Math.floor(i/perRow), col=i%perRow;
+    const x=originX+col*step, y=originY-row*step-32;
+    const grp=document.createElementNS("http://www.w3.org/2000/svg","g");
+    grp.setAttribute("class","tile-x");
+    grp.innerHTML = `<rect x="${x}" y="${y}" width="30" height="30" rx="6"></rect><text x="${x+15}" y="${y+20}" text-anchor="middle">x</text>`;
+    g.appendChild(grp);
+  }
+  for(let k=0;k<cCount;k++,i++){
+    const row=Math.floor(i/perRow), col=i%perRow;
+    const x=originX+col*step+15, y=originY-row*step-17;
+    const grp=document.createElementNS("http://www.w3.org/2000/svg","g");
+    grp.setAttribute("class","tile-c");
+    grp.innerHTML = `<circle cx="${x}" cy="${y}" r="13"></circle><text x="${x}" y="${y+5}" text-anchor="middle">1</text>`;
+    g.appendChild(grp);
+  }
+}
+function weightOf(x,c){ return x*hiddenX + c; }
+
+function render(){
+  renderPan("leftPan", state.xL, state.cL);
+  renderPan("rightPan", state.xR, state.cR);
+  document.getElementById("equationDisplay").innerHTML =
+    sideText(state.xL,state.cL) + '<span class="eq-sign">=</span>' + sideText(state.xR,state.cR);
+
+  const wL = weightOf(state.xL,state.cL);
+  const wR = weightOf(state.xR,state.cR);
+  const diff = wR - wL;
+  const angle = 16 * Math.tanh(diff/6);
+  document.getElementById("beamGroup").style.transform = `rotate(${angle}deg)`;
+
+  const status = document.getElementById("statusLine");
+  if(Math.abs(diff) < 0.05) status.textContent = "The pans are balanced.";
+  else if(diff > 0) status.textContent = "Heavier on the right — that pan sinks.";
+  else status.textContent = "Heavier on the left — that pan sinks.";
+
+  document.getElementById("elimX").disabled = !(state.xL>0 && state.xR>0);
+  document.getElementById("elimC").disabled = !(state.cL>0 && state.cR>0);
+  const canDivL = state.xL>1 && state.xR===0 && state.cL===0;
+  const canDivR = state.xR>1 && state.xL===0 && state.cR===0;
+  document.getElementById("divide").disabled = !(canDivL || canDivR);
+
+  const isolatedL = state.xL===1 && state.cL===0 && state.xR===0;
+  const isolatedR = state.xR===1 && state.cR===0 && state.xL===0;
+  const box = document.getElementById("resultBox");
+  if((isolatedL || isolatedR) && Math.abs(diff) < 0.05){
+    const val = isolatedL ? state.cR : state.cL;
+    box.hidden=false;
+    box.innerHTML = `<span class="big">x = ${val}</span>Level and isolated — that's the solution. Check: ${origState.xL}(${val}) + ${origState.cL} = ${origState.xL*val+origState.cL}, and ${origState.xR}(${val}) + ${origState.cR} = ${origState.xR*val+origState.cR}.`;
+    document.getElementById("elimX").disabled=true;
+    document.getElementById("elimC").disabled=true;
+    document.getElementById("divide").disabled=true;
+  } else if((isolatedL || isolatedR) && Math.abs(diff) >= 0.05){
+    box.hidden=false;
+    box.innerHTML = `<span class="big">Not quite yet</span>The tiles look isolated, but the pans don't actually weigh the same — some earlier move wasn't applied to both sides.`;
+  } else {
+    box.hidden=true;
+  }
+}
+function applyEquation(){
+  state = {
+    xL:+document.getElementById("xL").value || 0,
+    cL:+document.getElementById("cL").value || 0,
+    xR:+document.getElementById("xR").value || 0,
+    cR:+document.getElementById("cR").value || 0,
+  };
+  origState = {...state};
+  hiddenX = (origState.xL === origState.xR) ? 1 : (origState.cR - origState.cL) / (origState.xL - origState.xR);
+  steps=[];
+  log(`Starting equation: ${sideText(state.xL,state.cL)} = ${sideText(state.xR,state.cR)}`);
+  render();
+}
+document.getElementById("applyEq").onclick = applyEquation;
+document.getElementById("resetBtn").onclick = applyEquation;
+
+document.getElementById("elimX").onclick = ()=>{
+  const n = Math.min(state.xL, state.xR);
+  if(n<=0) return;
+  state.xL-=n; state.xR-=n;
+  log(`Removed ${n===1?"1 x tile":n+" x tiles"} from both sides.`);
+  bump(); render();
+};
+document.getElementById("elimC").onclick = ()=>{
+  const n = Math.min(state.cL, state.cR);
+  if(n<=0) return;
+  state.cL-=n; state.cR-=n;
+  log(`Removed ${n===1?"1":n} from both sides.`);
+  bump(); render();
+};
+document.getElementById("divide").onclick = ()=>{
+  if(state.xL>1 && state.xR===0 && state.cL===0){
+    const n=state.xL;
+    log(`Divided both sides by ${n}.`);
+    state.xL=1; state.cR = Math.round((state.cR/n)*100)/100;
+  } else if(state.xR>1 && state.xL===0 && state.cR===0){
+    const n=state.xR;
+    log(`Divided both sides by ${n}.`);
+    state.xR=1; state.cL = Math.round((state.cL/n)*100)/100;
+  }
+  bump(); render();
+};
+
+document.querySelectorAll('.free-cols button').forEach(btn=>{
+  btn.onclick = ()=>{
+    const side = btn.dataset.side, what = btn.dataset.what, amt = +btn.dataset.amt;
+    const xKey = side==="L" ? "xL" : "xR", cKey = side==="L" ? "cL" : "cR";
+    if(what==="x"){
+      if(state[xKey]+amt < 0 || state[xKey]+amt > 8) return;
+      state[xKey]+=amt;
+      log(`${amt>0?"Added":"Removed"} 1 x tile ${amt>0?"to":"from"} the ${side==="L"?"left":"right"} pan.`);
+    } else {
+      if(state[cKey]+amt < 0 || state[cKey]+amt > 20) return;
+      state[cKey]+=amt;
+      log(`${amt>0?"Added":"Removed"} 1 from the ${side==="L"?"left":"right"} pan.`);
+    }
+    bump(); render();
+  };
+});
+
+applyEquation();
+</script>
+</body>
+</html>
