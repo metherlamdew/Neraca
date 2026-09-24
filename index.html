@@ -40,6 +40,10 @@
   .tile-x text{fill:#0d2320; font-weight:700; font-size:16px;}
   .tile-c circle{fill:var(--c); stroke:var(--c-dark); stroke-width:2;}
   .tile-c text{fill:#3a160b; font-weight:700; font-size:13px;}
+  .tile-frac rect{fill:var(--c); stroke:var(--c-dark); stroke-width:2;}
+  .tile-frac text{fill:#3a160b; font-weight:700; font-size:13px;}
+  .tile-frac-x rect{fill:var(--x); stroke:var(--x-dark); stroke-width:2;}
+  .tile-frac-x text{fill:#0d2320; font-weight:700; font-size:13px;}
   .pan.bump{animation:bump .3s ease;}
   @keyframes bump{ 0%{transform:translateY(0)} 40%{transform:translateY(5px)} 100%{transform:translateY(0)} }
 
@@ -71,11 +75,23 @@
   }
   button:hover:not(:disabled){transform:translateY(-1px);}
   button:disabled{opacity:.35; cursor:not-allowed;}
-  #applyEq{background:var(--brass); width:100%; margin-top:2px;}
+  #applyEq{background:var(--brass); flex:1;}
+  #randomizeBtn{background:var(--x); flex:1;}
+  .setup-btns{display:flex; gap:8px;}
+  .setup-btns button{width:auto; margin:0;}
   #resetBtn{background:transparent; border:1px solid var(--line); color:var(--chalk-dim); width:100%; margin-top:6px;}
-  #divide{background:var(--c);}
+  .factor-block{margin-top:12px;}
+  .factor-block label{display:block; font-size:.82rem; color:var(--chalk-dim); margin-bottom:6px;}
+  .factor-row{display:flex; gap:8px;}
+  .factor-row input{
+    width:56px; padding:6px 4px; text-align:center; border-radius:6px;
+    border:1px solid var(--line); background:#1c2724; color:var(--chalk); font-size:1rem;
+  }
+  #multiplyBtn,#divideBtn{flex:1; margin:0; background:var(--c);}
+  #multiplyBtn{background:var(--x);}
   .free-cols{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
   .free-cols button{width:100%; margin:0 0 8px; padding:9px 6px;}
+  .hint{color:var(--chalk-dim); font-size:.82rem; margin:8px 0 0; line-height:1.4;}
 
   .log ol{margin:0; padding-left:20px; max-height:150px; overflow-y:auto; font-size:.9rem; color:var(--chalk-dim);}
   .log li{margin-bottom:6px;}
@@ -124,7 +140,11 @@
           <input type="number" id="xR" min="0" max="6" value="1">x +
           <input type="number" id="cR" min="0" max="15" value="9">
         </div>
-        <button id="applyEq">Use this equation</button>
+        <div class="setup-btns">
+          <button id="applyEq">Use this equation</button>
+          <button id="randomizeBtn">🎲 Random equation</button>
+        </div>
+        <p class="hint" id="difficultyHint"></p>
       </div>
 
       <div class="free">
@@ -151,7 +171,14 @@
         <h2>Balance moves</h2>
         <button id="elimX">Remove x from both sides</button>
         <button id="elimC">Remove a number from both sides</button>
-        <button id="divide">Divide both sides</button>
+        <div class="factor-block">
+          <label for="factorInput">Multiply or divide both sides by</label>
+          <div class="factor-row">
+            <input type="number" id="factorInput" min="1" max="12" value="2">
+            <button id="multiplyBtn">× Multiply</button>
+            <button id="divideBtn">÷ Divide</button>
+          </div>
+        </div>
         <button id="resetBtn">Start over</button>
       </div>
 
@@ -168,10 +195,36 @@
 <script>
 let state, origState, steps, hiddenX;
 
+function isZero(v){ return Math.abs(v) < 1e-6; }
+function isWhole(v){ return Math.abs(v-Math.round(v)) < 1e-6; }
+function isOne(v){ return Math.abs(v-1) < 1e-6; }
+function toFraction(x, maxDen=12){
+  if(isWhole(x)) return {n:Math.round(x), d:1};
+  const sign = x<0 ? -1 : 1; x=Math.abs(x);
+  let h1=1,h2=0,k1=0,k2=1,b=x,a;
+  for(let i=0;i<20;i++){
+    a=Math.floor(b);
+    [h1,h2]=[a*h1+h2,h1]; [k1,k2]=[a*k1+k2,k1];
+    if(Math.abs(x-h1/k1) < 1e-9 || k1>maxDen) break;
+    b = 1/(b-a);
+  }
+  return {n:sign*h1, d:k1};
+}
+function fmt(v){
+  if(isWhole(v)) return String(Math.round(v));
+  const f=toFraction(v);
+  return f.d===1 ? String(f.n) : `${f.n}/${f.d}`;
+}
+function fmtFull(v){
+  if(isWhole(v)) return String(Math.round(v));
+  return `${fmt(v)} (\u2248${v.toFixed(2)})`;
+}
 function sideText(x,c){
   const parts=[];
-  if(x>0) parts.push(x===1 ? "x" : x+"x");
-  if(c>0 || x===0) parts.push(String(c));
+  if(!isZero(x)){
+    parts.push(isWhole(x) ? (Math.round(x)===1 ? "x" : Math.round(x)+"x") : fmt(x)+"x");
+  }
+  if(!isZero(c) || isZero(x)) parts.push(fmt(c));
   return parts.join(" + ");
 }
 function log(msg){
@@ -193,21 +246,45 @@ function renderPan(groupId, xCount, cCount){
   const originY = 305;
   const perRow=4, step=36;
   let i=0;
-  for(let k=0;k<xCount;k++,i++){
-    const row=Math.floor(i/perRow), col=i%perRow;
-    const x=originX+col*step, y=originY-row*step-32;
-    const grp=document.createElementNS("http://www.w3.org/2000/svg","g");
-    grp.setAttribute("class","tile-x");
-    grp.innerHTML = `<rect x="${x}" y="${y}" width="30" height="30" rx="6"></rect><text x="${x+15}" y="${y+20}" text-anchor="middle">x</text>`;
-    g.appendChild(grp);
+  if(!isZero(xCount)){
+    if(isWhole(xCount) && xCount<=10){
+      const n=Math.round(xCount);
+      for(let k=0;k<n;k++,i++){
+        const row=Math.floor(i/perRow), col=i%perRow;
+        const x=originX+col*step, y=originY-row*step-32;
+        const grp=document.createElementNS("http://www.w3.org/2000/svg","g");
+        grp.setAttribute("class","tile-x");
+        grp.innerHTML = `<rect x="${x}" y="${y}" width="30" height="30" rx="6"></rect><text x="${x+15}" y="${y+20}" text-anchor="middle">x</text>`;
+        g.appendChild(grp);
+      }
+    } else {
+      const row=Math.floor(i/perRow), col=i%perRow;
+      const x=originX+col*step, y=originY-row*step-32;
+      const grp=document.createElementNS("http://www.w3.org/2000/svg","g");
+      grp.setAttribute("class","tile-frac-x");
+      grp.innerHTML = `<rect x="${x}" y="${y}" width="66" height="30" rx="6"></rect><text x="${x+33}" y="${y+20}" text-anchor="middle">${fmt(xCount)}x</text>`;
+      g.appendChild(grp); i++;
+    }
   }
-  for(let k=0;k<cCount;k++,i++){
-    const row=Math.floor(i/perRow), col=i%perRow;
-    const x=originX+col*step+15, y=originY-row*step-17;
-    const grp=document.createElementNS("http://www.w3.org/2000/svg","g");
-    grp.setAttribute("class","tile-c");
-    grp.innerHTML = `<circle cx="${x}" cy="${y}" r="13"></circle><text x="${x}" y="${y+5}" text-anchor="middle">1</text>`;
-    g.appendChild(grp);
+  if(!isZero(cCount)){
+    if(isWhole(cCount) && cCount<=16){
+      const n=Math.round(cCount);
+      for(let k=0;k<n;k++,i++){
+        const row=Math.floor(i/perRow), col=i%perRow;
+        const x=originX+col*step+15, y=originY-row*step-17;
+        const grp=document.createElementNS("http://www.w3.org/2000/svg","g");
+        grp.setAttribute("class","tile-c");
+        grp.innerHTML = `<circle cx="${x}" cy="${y}" r="13"></circle><text x="${x}" y="${y+5}" text-anchor="middle">1</text>`;
+        g.appendChild(grp);
+      }
+    } else {
+      const row=Math.floor(i/perRow), col=i%perRow;
+      const x=originX+col*step, y=originY-row*step-32;
+      const grp=document.createElementNS("http://www.w3.org/2000/svg","g");
+      grp.setAttribute("class","tile-frac");
+      grp.innerHTML = `<rect x="${x}" y="${y}" width="66" height="30" rx="6"></rect><text x="${x+33}" y="${y+20}" text-anchor="middle">${fmt(cCount)}</text>`;
+      g.appendChild(grp);
+    }
   }
 }
 function weightOf(x,c){ return x*hiddenX + c; }
@@ -229,25 +306,37 @@ function render(){
   else if(diff > 0) status.textContent = "Heavier on the right — that pan sinks.";
   else status.textContent = "Heavier on the left — that pan sinks.";
 
-  document.getElementById("elimX").disabled = !(state.xL>0 && state.xR>0);
-  document.getElementById("elimC").disabled = !(state.cL>0 && state.cR>0);
-  const canDivL = state.xL>1 && state.xR===0 && state.cL===0;
-  const canDivR = state.xR>1 && state.xL===0 && state.cR===0;
-  document.getElementById("divide").disabled = !(canDivL || canDivR);
+  document.getElementById("elimX").disabled = !(state.xL>1e-6 && state.xR>1e-6);
+  document.getElementById("elimC").disabled = !(!isZero(state.cL) && !isZero(state.cR));
+  document.getElementById("multiplyBtn").disabled = false;
+  document.getElementById("divideBtn").disabled = false;
 
-  const isolatedL = state.xL===1 && state.cL===0 && state.xR===0;
-  const isolatedR = state.xR===1 && state.cR===0 && state.xL===0;
+  const isolatedL = isOne(state.xL) && isZero(state.cL) && isZero(state.xR);
+  const isolatedR = isOne(state.xR) && isZero(state.cR) && isZero(state.xL);
   const box = document.getElementById("resultBox");
   if((isolatedL || isolatedR) && Math.abs(diff) < 0.05){
     const val = isolatedL ? state.cR : state.cL;
+    const chkL = origState.xL*val+origState.cL, chkR = origState.xR*val+origState.cR;
     box.hidden=false;
-    box.innerHTML = `<span class="big">x = ${val}</span>Level and isolated — that's the solution. Check: ${origState.xL}(${val}) + ${origState.cL} = ${origState.xL*val+origState.cL}, and ${origState.xR}(${val}) + ${origState.cR} = ${origState.xR*val+origState.cR}.`;
+    box.innerHTML = `<span class="big">x = ${fmtFull(val)}</span>Level and isolated — that's the solution. Check: ${origState.xL}(${fmt(val)}) + ${origState.cL} = ${fmt(chkL)}, and ${origState.xR}(${fmt(val)}) + ${origState.cR} = ${fmt(chkR)}.`;
     document.getElementById("elimX").disabled=true;
     document.getElementById("elimC").disabled=true;
-    document.getElementById("divide").disabled=true;
+    document.getElementById("multiplyBtn").disabled=true;
+    document.getElementById("divideBtn").disabled=true;
   } else if((isolatedL || isolatedR) && Math.abs(diff) >= 0.05){
     box.hidden=false;
     box.innerHTML = `<span class="big">Not quite yet</span>The tiles look isolated, but the pans don't actually weigh the same — some earlier move wasn't applied to both sides.`;
+  } else if(isZero(state.xL) && isZero(state.xR)){
+    box.hidden=false;
+    if(Math.abs(state.cL-state.cR)<1e-6){
+      box.innerHTML = `<span class="big">x = any number</span>All the x tiles are gone and the two sides already match (${fmt(state.cL)} = ${fmt(state.cR)}). This equation is true no matter what x is.`;
+    } else {
+      box.innerHTML = `<span class="big">No solution</span>All the x tiles are gone, but the sides don't match (${fmt(state.cL)} \u2260 ${fmt(state.cR)}). There's no value of x that can balance this one.`;
+    }
+    document.getElementById("elimX").disabled=true;
+    document.getElementById("elimC").disabled=true;
+    document.getElementById("multiplyBtn").disabled=true;
+    document.getElementById("divideBtn").disabled=true;
   } else {
     box.hidden=true;
   }
@@ -268,30 +357,60 @@ function applyEquation(){
 document.getElementById("applyEq").onclick = applyEquation;
 document.getElementById("resetBtn").onclick = applyEquation;
 
+function randomEquation(){
+  let xL,xR,cL,cR,x0;
+  for(let tries=0; tries<60; tries++){
+    xL = Math.floor(Math.random()*6);
+    do{ xR = Math.floor(Math.random()*6); } while(xR===xL);
+    cL = Math.floor(Math.random()*13);
+    cR = Math.floor(Math.random()*13);
+    x0 = (cR-cL)/(xL-xR);
+    if(x0>=0 && x0<=10) break;
+  }
+  return {xL,cL,xR,cR,x0};
+}
+document.getElementById("randomizeBtn").onclick = ()=>{
+  const eq = randomEquation();
+  document.getElementById("xL").value = eq.xL;
+  document.getElementById("cL").value = eq.cL;
+  document.getElementById("xR").value = eq.xR;
+  document.getElementById("cR").value = eq.cR;
+  applyEquation();
+  const hint = document.getElementById("difficultyHint");
+  hint.textContent = isWhole(eq.x0) ? "New problem — this one works out to a whole number." : "New problem — this one works out to a fraction.";
+};
+
 document.getElementById("elimX").onclick = ()=>{
   const n = Math.min(state.xL, state.xR);
-  if(n<=0) return;
+  if(n<=1e-6) return;
   state.xL-=n; state.xR-=n;
-  log(`Removed ${n===1?"1 x tile":n+" x tiles"} from both sides.`);
+  log(`Removed ${fmt(n)}x from both sides.`);
   bump(); render();
 };
 document.getElementById("elimC").onclick = ()=>{
   const n = Math.min(state.cL, state.cR);
-  if(n<=0) return;
+  if(n<=1e-6) return;
   state.cL-=n; state.cR-=n;
-  log(`Removed ${n===1?"1":n} from both sides.`);
+  log(`Removed ${fmt(n)} from both sides.`);
   bump(); render();
 };
-document.getElementById("divide").onclick = ()=>{
-  if(state.xL>1 && state.xR===0 && state.cL===0){
-    const n=state.xL;
-    log(`Divided both sides by ${n}.`);
-    state.xL=1; state.cR = Math.round((state.cR/n)*100)/100;
-  } else if(state.xR>1 && state.xL===0 && state.cR===0){
-    const n=state.xR;
-    log(`Divided both sides by ${n}.`);
-    state.xR=1; state.cL = Math.round((state.cL/n)*100)/100;
-  }
+function factorVal(){
+  const v = +document.getElementById("factorInput").value;
+  return (v && v>0) ? v : 1;
+}
+function tooBig(s){ return [s.xL,s.cL,s.xR,s.cR].some(v=>Math.abs(v)>60); }
+document.getElementById("multiplyBtn").onclick = ()=>{
+  const n=factorVal();
+  const next={xL:state.xL*n, cL:state.cL*n, xR:state.xR*n, cR:state.cR*n};
+  if(tooBig(next)){ log(`That factor makes the pans too heavy to show — try a smaller one.`); return; }
+  state=next;
+  log(`Multiplied both sides by ${fmt(n)}.`);
+  bump(); render();
+};
+document.getElementById("divideBtn").onclick = ()=>{
+  const n=factorVal();
+  state.xL/=n; state.cL/=n; state.xR/=n; state.cR/=n;
+  log(`Divided both sides by ${fmt(n)}.`);
   bump(); render();
 };
 
