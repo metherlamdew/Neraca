@@ -91,6 +91,355 @@ input:focus{outline:2px solid var(--x);outline-offset:1px}
 .cf{position:fixed;top:-14px;width:9px;height:14px;border-radius:2px;z-index:50;pointer-events:none;animation:fall 2.4s ease-in forwards}
 @keyframes fall{to{transform:translate(var(--dx),105vh) rotate(var(--r))}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important}}
+ol{max-height:430px}li{margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed var(--line)}li:last-child{border-bottom:none}
+.wk{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:4px;font-size:.95rem;font-weight:600;color:var(--ink)}
+.why{display:block;margin-top:3px;font-size:.82rem;font-style:italic;color:var(--dim)}
+</style>
+</head>
+<body>
+<span class="sym" style="top:14%;left:5%">x²</span><span class="sym" style="top:60%;left:3%;animation-delay:-3s">∑</span><span class="sym" style="top:30%;right:4%;animation-delay:-5s">π</span><span class="sym" style="top:75%;right:7%;animation-delay:-2s">√</span><span class="sym" style="top:46%;left:92%;animation-delay:-7s">÷</span><span class="sym" style="top:88%;left:40%;animation-delay:-4s">y=</span>
+<div class="wrap">
+<header>
+  <div class="logo">⚖️</div><h1>The Equation Balance</h1>
+  <p class="sub">Two unknowns, two scales. Every <b style="color:var(--x)">x</b> and <b style="color:var(--y)">y</b> tile has a real hidden weight, so a scale only stays level if each move is fair. Combine the equations to isolate x and y.</p>
+</header>
+
+<div class="panel setup" id="setup">
+  <div id="rows" style="display:flex;flex-direction:column;gap:10px"></div>
+  <div class="btns"><button class="gold" id="applyBtn">Use these equations</button><button class="ghost" id="randBtn">🎲 Random system</button></div>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<div class="below">
+  <div class="panel">
+    <h2>What to do next</h2>
+    <p class="hint" id="hint"></p>
+    <div class="result" id="result" hidden></div>
+    <div class="btns"><button class="gold" id="playBtn">▶ Solve it step by step</button><button class="ghost" id="undoBtn">↶ Undo</button><button class="ghost" id="resetBtn">Start over</button></div>
+    <div class="legend"><span><i style="background:var(--x)"></i>x tile</span><span><i style="background:var(--y)"></i>y tile</span><span><i style="background:var(--k)"></i>1 (unit)</span><span><i style="border:2px dashed var(--dim)"></i>dashed = negative (a balloon that pulls up)</span></div>
+  </div>
+  <div class="panel"><h2>Full working, step by step</h2><ol id="log"></ol></div>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id), N=['A','B'];
+let eqs,orig,hid,hist,steps,celebrated=false,playing=false;
+function confetti(){
+  const cols=['var(--x)','var(--y)','var(--k)','var(--brass)'];
+  for(let i=0;i<70;i++){
+    const s=document.createElement('i');s.className='cf';
+    s.style.cssText=`left:${Math.random()*100}vw;background:${cols[i%4]};animation-delay:${Math.random()*.6}s;--dx:${(Math.random()-.5)*220}px;--r:${Math.random()*720}deg`;
+    document.body.appendChild(s);setTimeout(()=>s.remove(),3400);
+  }
+}
+const clean=v=>{const r=Math.round(v*1e9)/1e9;return r===0?0:r};
+const isZ=v=>Math.abs(v)<1e-7, isW=v=>Math.abs(v-Math.round(v))<1e-7, isOne=v=>Math.abs(v-1)<1e-7;
+function fmt(v){
+  if(isW(v))return String(Math.round(v));
+  let s=v<0?-1:1,x=Math.abs(v),h1=1,h2=0,k1=0,k2=1,b=x,a;
+  for(let i=0;i<20;i++){a=Math.floor(b);[h1,h2]=[a*h1+h2,h1];[k1,k2]=[a*k1+k2,k1];if(Math.abs(x-h1/k1)<1e-9||k1>24)break;b=1/(b-a)}
+  return k1>24?v.toFixed(2):(s<0?'−':'')+h1+'/'+k1;
+}
+const fm=v=>fmt(v).replace('-','−');
+function lhs(e){
+  let s='';
+  [[e.a,'x'],[e.b,'y']].forEach(([v,n])=>{
+    if(isZ(v))return;const m=Math.abs(v),body=(isOne(m)?'':fm(m))+n;
+    s+=s?(v<0?' − ':' + ')+body:(v<0?'−':'')+body;
+  });
+  return s||'0';
+}
+const eqText=e=>lhs(e)+' = '+fm(e.c);
+
+function panSVG(terms){
+  let total=0;terms.forEach(t=>{if(!isZ(t.v))total+=isW(t.v)?Math.abs(Math.round(t.v)):99});
+  const coll=total>15,items=[];
+  terms.forEach(t=>{
+    if(isZ(t.v))return;const m=Math.abs(t.v);
+    if(!coll&&isW(t.v))for(let k=0;k<Math.round(m);k++)items.push({k:t.k,neg:t.v<0,w:1,l:t.k==='c'?'1':t.k});
+    else items.push({k:t.k,neg:t.v<0,w:2,l:(t.v<0?'−':'')+(isOne(m)&&t.k!=='c'?'':fm(m))+(t.k==='c'?'':t.k)});
+  });
+  let r=0,s=0,out='';
+  items.forEach(it=>{
+    if(s+it.w>5){r++;s=0}
+    const x=-75+s*30,y=100-r*30,w=it.w===1?26:56;
+    out+=`<g class="t ${it.k}${it.neg?' neg':''}"><rect x="${x}" y="${y}" width="${w}" height="26" rx="${it.k==='c'?13:6}"/><rect class="gl" x="${x+4}" y="${y+3}" width="${w-8}" height="6" rx="3"/><text x="${x+w/2}" y="${y+18}">${it.l}</text></g>`;
+    s+=it.w;
+  });
+  return out;
+}
+
+function known(){
+  const k={x:null,y:null};
+  eqs.forEach((e,i)=>{
+    if(isZ(e.b)&&!isZ(e.a)&&!k.x)k.x={v:e.c/e.a,i};
+    if(isZ(e.a)&&!isZ(e.b)&&!k.y)k.y={v:e.c/e.b,i};
+  });
+  return k;
+}
+
+function render(){
+  const k=known();
+  eqs.forEach((e,i)=>{
+    const wL=e.a*hid.x+e.b*hid.y,wR=e.c,diff=wR-wL,tot=Math.abs(wL)+Math.abs(wR)+4;
+    const ang=Math.abs(diff)<1e-6?0:15*Math.tanh(3*diff/tot),r=ang*Math.PI/180;
+    const dy=200*Math.sin(r),dx=200*(Math.cos(r)-1);
+    $('beam'+i).style.transform=`rotate(${ang}deg)`;
+    $('pL'+i).style.transform=`translate(${80-dx}px,${40-dy}px)`;
+    $('pR'+i).style.transform=`translate(${480+dx}px,${40+dy}px)`;
+    $('cL'+i).innerHTML=panSVG([{v:e.a,k:'x'},{v:e.b,k:'y'}]);
+    $('cR'+i).innerHTML=panSVG([{v:e.c,k:'c'}]);
+    $('eq'+i).innerHTML=eqText(e).replace(/x/g,'<em class="vx">x</em>').replace(/y/g,'<em class="vy">y</em>');
+    const bd=$('bd'+i);
+    if(isZ(e.a)&&isZ(e.b)){bd.textContent=isZ(e.c)?'0 = 0 · always true':'impossible';bd.className='badge '+(isZ(e.c)?'':'bad')}
+    else if(Math.abs(diff)<1e-6){bd.textContent='balanced';bd.className='badge ok'}
+    else{bd.textContent=diff>0?'right pan sinks':'left pan sinks';bd.className='badge bad'}
+    const sb=$('sb'+i);let sub=null;
+    if(k.x&&k.x.i!==i&&!isZ(e.a))sub={v:'x',val:k.x.v};
+    else if(k.y&&k.y.i!==i&&!isZ(e.b))sub={v:'y',val:k.y.v};
+    sb.hidden=!sub;
+    if(sub){sb.dataset.v=sub.v;sb.dataset.val=sub.val;sb.textContent=`Replace ${sub.v} with ${fm(sub.val)} in Equation ${N[i]}`}
+  });
+  const res=$('result'),bad=eqs.some(e=>isZ(e.a)&&isZ(e.b)&&!isZ(e.c));
+  const nontriv=eqs.filter(e=>!isZ(e.a)||!isZ(e.b)).length;
+  let hint='Goal: get one variable alone. Add or subtract the equations so that x (or y) cancels, then divide.';
+  res.hidden=false;
+  if(bad)res.innerHTML='<span class="big">No solution</span>One scale reads 0 = a nonzero number, so no weights can ever satisfy both equations.';
+  else if(k.x&&k.y){
+    const xv=k.x.v,yv=k.y.v,c=orig.map(o=>`${fm(o.a)}(${fm(xv)}) + ${fm(o.b)}(${fm(yv)}) = ${fm(o.a*xv+o.b*yv)}`);
+    res.innerHTML=`<span class="big">x = ${fm(xv)}, y = ${fm(yv)}</span>Both unknowns found. Check: ${c[0]} and ${c[1]}.`;
+    hint='Solved! Try a random system, or type your own.';
+    if(!celebrated){celebrated=true;confetti()}
+  }else if(nontriv<2){
+    res.innerHTML='<span class="big">Infinitely many solutions</span>One equation disappeared into 0 = 0, so the two equations describe the same line.';
+  }else{
+    res.hidden=true;celebrated=false;
+    if(k.x)hint=`x = ${fm(k.x.v)} is known. Use the green “Replace” button on the other equation to swap its x tiles for unit tiles.`;
+    else if(k.y)hint=`y = ${fm(k.y.v)} is known. Use the green “Replace” button on the other equation to swap its y tiles for unit tiles.`;
+  }
+  $('hint').textContent=hint;
+  $('undoBtn').disabled=hist.length===0;
+}
+
+function log(m){steps.push(m);$('log').innerHTML=steps.map(s=>`<li>${s}</li>`).join('');$('log').scrollTop=1e5}
+function apply(fn,msg){
+  const next=eqs.map(e=>({...e}));fn(next);
+  if(next.some(e=>[e.a,e.b,e.c].some(v=>Math.abs(v)>999))){log('That would make the numbers too large to show.');return}
+  hist.push({eqs:eqs.map(e=>({...e})),n:steps.length});
+  next.forEach(e=>{e.a=clean(e.a);e.b=clean(e.b);e.c=clean(e.c)});
+  eqs=next;log(msg+working());render();
+}
+function setup(){
+  const g=id=>+$(id).value||0;
+  eqs=[0,1].map(i=>({a:g('a'+i),b:g('b'+i),c:g('c'+i)}));
+  orig=eqs.map(e=>({...e}));
+  const [p,q]=eqs,det=p.a*q.b-q.a*p.b;
+  if(Math.abs(det)>1e-9)hid={x:(p.c*q.b-q.c*p.b)/det,y:(p.a*q.c-q.a*p.c)/det};
+  else if(p.a)hid={x:p.c/p.a,y:0};else if(p.b)hid={x:0,y:p.c/p.b};else hid={x:1,y:1};
+  hist=[];steps=[];celebrated=false;playing=false;log('Starting system:'+working());render();
+}
+function randomize(){
+  const r=n=>Math.floor(Math.random()*n),co=()=>{const v=1+r(4);return Math.random()<.2?-v:v};
+  for(;;){
+    const X=1+r(6),Y=1+r(6),a1=co(),b1=co(),a2=co(),b2=co();
+    const c1=a1*X+b1*Y,c2=a2*X+b2*Y;
+    if(a1*b2-a2*b1!==0&&c1>0&&c2>0&&c1<=40&&c2<=40){
+      [a1,b1,c1,a2,b2,c2].forEach((v,i)=>$(['a0','b0','c0','a1','b1','c1'][i]).value=v);
+      return;
+    }
+  }
+}
+
+// build UI
+const defs=[[2,1,11],[1,3,18]];
+$('rows').innerHTML=[0,1].map(i=>`<div class="setrow"><span class="lbl ${i?'b':'a'}">${N[i]}</span><input type="number" id="a${i}" value="${defs[i][0]}"> x + <input type="number" id="b${i}" value="${defs[i][1]}"> y = <input type="number" id="c${i}" value="${defs[i][2]}"></div>`).join('');
+$('cards').innerHTML=[0,1].map(i=>{
+  const j=1-i;
+  const pan=s=>`<g class="pan" id="p${s}${i}"><path class="str" d="M0 0 L-75 130 M0 0 L75 130"/><rect class="plate" x="-80" y="130" width="160" height="8" rx="4"/><g id="c${s}${i}"></g></g>`;
+  return `<article class="panel card" data-i="${i}">
+  <div class="chead"><span class="tag">Equation ${N[i]}</span><span class="badge" id="bd${i}"></span></div>
+  <svg viewBox="0 0 560 250" role="img" aria-label="Balance scale for equation ${N[i]}">
+    <path class="post" d="M280 40V236"/><rect class="base" x="210" y="236" width="140" height="8" rx="4"/>
+    <g class="beam" id="beam${i}"><rect class="bar" x="80" y="36" width="400" height="8" rx="4"/></g>
+    <circle class="piv" cx="280" cy="40" r="9"/>${pan('L')}${pan('R')}
+  </svg>
+  <div class="eqline" id="eq${i}"></div>
+  <div class="ctrls">
+    <div class="mrow"><input type="number" id="f${i}" value="2" min="-12" max="12"><button data-op="mul" data-i="${i}">× multiply</button><button data-op="div" data-i="${i}">÷ divide</button></div>
+    <div class="mrow"><button class="ghost" data-op="add" data-i="${i}">+ Equation ${N[j]}</button><button class="ghost" data-op="sub" data-i="${i}">− Equation ${N[j]}</button></div>
+    <button class="sub-btn" id="sb${i}" data-sub="${i}" hidden></button>
+  </div></article>`;
+}).join('');
+
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('button');if(!b)return;if(playing&&b.id!=='playBtn')return;
+  if(b.dataset.sub!==undefined){
+    const i=+b.dataset.sub,v=b.dataset.v,val=+b.dataset.val;
+    apply(n=>{const e=n[i];if(v==='x'){e.c-=e.a*val;e.a=0}else{e.c-=e.b*val;e.b=0}},`Replaced ${v} with ${fm(val)} in Equation ${N[i]}.`);
+    return;
+  }
+  const op=b.dataset.op;if(!op)return;
+  const i=+b.dataset.i,j=1-i,f=+$('f'+i).value;
+  const each=(e,fn)=>{e.a=fn(e.a);e.b=fn(e.b);e.c=fn(e.c)};
+  if(op==='mul'){if(!f){log('Multiplying by 0 would erase the equation.');return}apply(n=>each(n[i],v=>v*f),`Multiplied Equation ${N[i]} by ${fm(f)}.`)}
+  if(op==='div'){if(!f){log('You can’t divide by 0.');return}apply(n=>each(n[i],v=>v/f),`Divided Equation ${N[i]} by ${fm(f)}.`)}
+  if(op==='add')apply(n=>{n[i].a+=eqs[j].a;n[i].b+=eqs[j].b;n[i].c+=eqs[j].c},`Added Equation ${N[j]} to Equation ${N[i]}.`);
+  if(op==='sub')apply(n=>{n[i].a-=eqs[j].a;n[i].b-=eqs[j].b;n[i].c-=eqs[j].c},`Subtracted Equation ${N[j]} from Equation ${N[i]}.`);
+});
+const lcm=(a,b)=>{let x=a,y=b;while(y){[x,y]=[y,x%y]}return a/x*b};
+const eachT=(e,fn)=>{e.a=fn(e.a);e.b=fn(e.b);e.c=fn(e.c)};
+const colr=s=>s.replace(/x/g,'<em class="vx">x</em>').replace(/y/g,'<em class="vy">y</em>');
+function working(){return '<div class="wk">'+eqs.map((e,i)=>`<span><b>${N[i]})</b> ${colr(eqText(e))}</span>`).join('')+'</div>'}
+function nextMove(){
+  if(eqs.some(e=>isZ(e.a)&&isZ(e.b)))return null;
+  const k=known();if(k.x&&k.y)return null;
+  for(let i=0;i<2;i++){
+    const e=eqs[i],s=isZ(e.b)?e.a:isZ(e.a)?e.b:null;
+    if(s!==null&&!isOne(s))return{i,op:'div',f:s,why:`Equation ${N[i]} has only one unknown, so divide it by ${fm(s)} to get the unknown alone.`};
+  }
+  for(let i=0;i<2;i++){
+    const e=eqs[i];
+    if(k.x&&k.x.i!==i&&!isZ(e.a))return{i,op:'sub',v:'x',val:k.x.v,why:`We know x = ${fm(k.x.v)}, so replace x with ${fm(k.x.v)} in Equation ${N[i]} and move the numbers to the right side.`};
+    if(k.y&&k.y.i!==i&&!isZ(e.b))return{i,op:'sub',v:'y',val:k.y.v,why:`We know y = ${fm(k.y.v)}, so replace y with ${fm(k.y.v)} in Equation ${N[i]} and move the numbers to the right side.`};
+  }
+  const keys=['a','b'],rd=keys.find(q=>Math.abs(Math.abs(eqs[0][q])-Math.abs(eqs[1][q]))<1e-7);
+  if(rd){
+    const nm=rd==='a'?'x':'y',same=eqs[0][rd]*eqs[1][rd]>0;
+    return{i:1,op:same?'subE':'addE',why:same?`The ${nm} terms are equal, so subtract Equation A from Equation B. The ${nm} terms cancel.`:`The ${nm} terms are opposites, so add Equation A to Equation B. The ${nm} terms cancel.`};
+  }
+  const opts=keys.map(q=>{const au=Math.abs(eqs[0][q]),aw=Math.abs(eqs[1][q]),ints=isW(au)&&isW(aw),L=ints?lcm(Math.round(au),Math.round(aw)):null;return{q,au,aw,L,cost:ints?L:au*aw}});
+  opts.sort((p,q)=>p.cost-q.cost);
+  const o=opts[0],nm=o.q==='a'?'x':'y';
+  if(o.L!==null){
+    if(o.au<o.L-1e-7){const f=o.L/o.au;return{i:0,op:'mul',f,why:`To cancel ${nm}, make the ${nm} terms the same size. Multiply Equation A by ${fm(f)} so its ${nm} term becomes ${fm(o.L)}${nm}.`}}
+    const f=o.L/o.aw;return{i:1,op:'mul',f,why:`Multiply Equation B by ${fm(f)} so its ${nm} term also becomes ${fm(o.L)}${nm}.`};
+  }
+  const f=o.aw/o.au;return{i:0,op:'mul',f,why:`Multiply Equation A by ${fm(f)} so its ${nm} term has the same size as in Equation B.`};
+}
+function run(m){
+  const w=t=>t+`<small class="why">${m.why}</small>`,i=m.i;
+  if(m.op==='mul')apply(n=>eachT(n[i],v=>v*m.f),w(`Multiplied Equation ${N[i]} by ${fm(m.f)}.`));
+  if(m.op==='div')apply(n=>eachT(n[i],v=>v/m.f),w(`Divided Equation ${N[i]} by ${fm(m.f)}.`));
+  if(m.op==='subE')apply(n=>{n[1].a-=eqs[0].a;n[1].b-=eqs[0].b;n[1].c-=eqs[0].c},w('Subtracted Equation A from Equation B.'));
+  if(m.op==='addE')apply(n=>{n[1].a+=eqs[0].a;n[1].b+=eqs[0].b;n[1].c+=eqs[0].c},w('Added Equation A to Equation B.'));
+  if(m.op==='sub')apply(n=>{const e=n[i];if(m.v==='x'){e.c-=e.a*m.val;e.a=0}else{e.c-=e.b*m.val;e.b=0}},w(`Replaced ${m.v} with ${fm(m.val)} in Equation ${N[i]}.`));
+  $('hint').textContent='▶ '+m.why;
+}
+function setPlay(){$('playBtn').textContent=playing?'■ Stop':'▶ Solve it step by step'}
+async function play(){
+  if(playing){playing=false;setPlay();return}
+  playing=true;setPlay();let g=0;
+  while(playing&&g++<14){
+    const m=nextMove();if(!m)break;
+    run(m);
+    await new Promise(r=>setTimeout(r,1900));
+  }
+  playing=false;setPlay();render();
+}
+$('playBtn').onclick=play;
+$('applyBtn').onclick=setup;
+$('resetBtn').onclick=()=>{[orig[0],orig[1]].forEach((o,i)=>{$('a'+i).value=o.a;$('b'+i).value=o.b;$('c'+i).value=o.c});setup()};
+$('randBtn').onclick=()=>{randomize();setup()};
+$('undoBtn').onclick=()=>{const h=hist.pop();if(!h)return;eqs=h.eqs;steps.length=h.n;log('Undid the last step.');render()};
+setup();
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Equation Balance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f3efe4;--bg2:#e9e3d3;--card:#fffdf7;--ink:#24302c;--dim:#65726c;--line:#ddd5c0;--brass:#b8901a;--x:#2aa198;--y:#8f74e6;--k:#e3a53a;--ok:#2f8f5b;--bad:#c4553a;--shadow:0 10px 30px rgba(60,50,20,.12);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b2624;--bg2:#141c1b;--card:#263631;--ink:#f2eee2;--dim:#a9b6ae;--line:#3b4d47;--brass:#d4aa32;--ok:#5fd08f;--bad:#f08a6c;--shadow:0 10px 30px rgba(0,0,0,.35)}}
+:root[data-theme="dark"]{--bg:#1b2624;--bg2:#141c1b;--card:#263631;--ink:#f2eee2;--dim:#a9b6ae;--line:#3b4d47;--brass:#d4aa32;--ok:#5fd08f;--bad:#f08a6c;--shadow:0 10px 30px rgba(0,0,0,.35)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);font-family:Inter,system-ui,sans-serif;background:radial-gradient(900px 500px at 15% -10%,var(--bg2),transparent),var(--bg);min-height:100vh}
+.wrap{max-width:1100px;margin:0 auto;padding:34px 20px 60px}
+header{text-align:center;margin-bottom:24px}
+h1{font-family:'Patrick Hand',cursive,sans-serif;font-weight:400;font-size:clamp(2.2rem,6vw,3.2rem);margin:0}
+h1 span{color:var(--x)}h1 b{color:var(--y);font-weight:400}
+.sub{color:var(--dim);max-width:620px;margin:6px auto 0;line-height:1.5}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:18px 20px}
+.setup{display:flex;flex-wrap:wrap;gap:18px 28px;align-items:center;justify-content:center;margin-bottom:22px}
+.setrow{display:flex;align-items:center;gap:7px;font-size:1.05rem;font-weight:500}
+.lbl{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-weight:700;font-size:.85rem;color:#14201e}
+.lbl.a{background:var(--x)}.lbl.b{background:var(--y)}
+input[type=number]{width:54px;padding:8px 4px;text-align:center;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+button{font:inherit;font-size:.88rem;font-weight:600;cursor:pointer;border:none;border-radius:10px;padding:9px 13px;background:var(--ink);color:var(--card);transition:transform .12s,opacity .15s}
+button:hover:not(:disabled){transform:translateY(-1px)}button:disabled{opacity:.35;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.gold{background:var(--brass);color:#fff}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media(max-width:860px){.cards{grid-template-columns:1fr}}
+.card{position:relative;overflow:hidden;padding-top:22px}
+.card::before{content:"";position:absolute;inset:0 0 auto;height:5px;background:var(--x)}
+.card[data-i="1"]::before{background:var(--y)}
+.chead{display:flex;justify-content:space-between;align-items:center}
+.tag{font-family:'Patrick Hand',cursive,sans-serif;font-size:1.35rem}
+.badge{font-size:.78rem;font-weight:600;padding:4px 10px;border-radius:20px;background:var(--bg);color:var(--dim);border:1px solid var(--line)}
+.badge.ok{color:var(--ok);border-color:var(--ok)}.badge.bad{color:var(--bad);border-color:var(--bad)}
+svg{width:100%;height:auto;display:block}
+.post{stroke:var(--line);stroke-width:6;stroke-linecap:round}.base{fill:var(--line)}
+.bar{fill:var(--brass)}.piv{fill:var(--brass);stroke:var(--card);stroke-width:3}
+.beam{transform-origin:280px 40px;transform-box:view-box;transition:transform .6s cubic-bezier(.34,1.3,.4,1)}
+.pan{transition:transform .6s cubic-bezier(.34,1.3,.4,1)}
+.str{stroke:var(--dim);stroke-width:1.5;fill:none;opacity:.7}.plate{fill:var(--brass)}
+.t rect{fill:var(--tc);stroke:rgba(0,0,0,.25);stroke-width:1.5}
+.t text{fill:#14201e;font:700 13px Inter,sans-serif;text-anchor:middle}
+.t.x{--tc:var(--x)}.t.y{--tc:var(--y)}.t.c{--tc:var(--k)}
+.t.neg rect{fill-opacity:.15;stroke:var(--tc);stroke-width:2;stroke-dasharray:4 3}.t.neg text{fill:var(--ink)}
+.eqline{text-align:center;font-size:1.55rem;font-weight:600;margin:2px 0 12px;min-height:1.6em}
+.ctrls{display:flex;flex-direction:column;gap:8px}
+.mrow{display:flex;gap:8px;align-items:center}.mrow button{flex:1}
+.sub-btn{background:var(--ok);color:#fff}
+.below{display:grid;grid-template-columns:1.2fr 1fr;gap:22px;margin-top:22px}
+@media(max-width:860px){.below{grid-template-columns:1fr}}
+h2{font-family:'Patrick Hand',cursive,sans-serif;font-weight:400;font-size:1.3rem;margin:0 0 8px;color:var(--brass)}
+.hint{color:var(--dim);font-size:.9rem;line-height:1.5;margin:0 0 12px}
+ol{margin:0;padding-left:20px;max-height:170px;overflow-y:auto;font-size:.9rem;color:var(--dim)}li{margin-bottom:5px}li:last-child{color:var(--ink)}
+.result{border-radius:14px;padding:14px 16px;background:linear-gradient(135deg,var(--brass),#e6c35a);color:#2a2106;font-weight:500;line-height:1.5;margin-bottom:12px}
+.result .big{font-family:'Patrick Hand',cursive,sans-serif;font-size:1.7rem;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.82rem;color:var(--dim);margin-top:10px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:4px;vertical-align:-1px;margin-right:5px}
+body::before,body::after{content:"";position:fixed;z-index:-1;border-radius:50%;filter:blur(70px);opacity:.35;pointer-events:none}
+body::before{width:420px;height:420px;background:var(--x);top:-120px;left:-100px;animation:drift 14s ease-in-out infinite alternate}
+body::after{width:480px;height:480px;background:var(--y);bottom:-160px;right:-120px;animation:drift 18s ease-in-out infinite alternate-reverse}
+@keyframes drift{to{transform:translate(80px,60px) scale(1.15)}}
+.sym{position:fixed;z-index:-1;font-family:'Patrick Hand',cursive,sans-serif;color:var(--ink);opacity:.08;font-size:3.2rem;pointer-events:none;user-select:none;animation:float 10s ease-in-out infinite alternate}
+@keyframes float{to{transform:translateY(-34px) rotate(14deg)}}
+.logo{font-size:2.8rem;display:inline-block;transform-origin:50% 15%;animation:tilt 3s ease-in-out infinite}
+@keyframes tilt{0%,100%{transform:rotate(-14deg)}50%{transform:rotate(14deg)}}
+h1{background:linear-gradient(90deg,var(--x),var(--y),var(--k),var(--x));background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 6s linear infinite}
+@keyframes shine{to{background-position:200% center}}
+.panel{backdrop-filter:blur(8px)}
+.card{transition:transform .25s,box-shadow .25s}
+.card:hover{transform:translateY(-4px)}
+.card::after{content:"";position:absolute;width:260px;height:260px;border-radius:50%;background:var(--x);filter:blur(80px);opacity:.14;top:-90px;right:-70px;pointer-events:none}
+.card[data-i="1"]::after{background:var(--y)}
+.t{animation:pop .4s cubic-bezier(.3,1.6,.5,1) both;transform-box:fill-box;transform-origin:50% 100%}
+.t:nth-child(2n){animation-delay:.04s}.t:nth-child(3n){animation-delay:.08s}
+@keyframes pop{from{transform:scale(0) translateY(-24px);opacity:0}}
+.t rect{filter:drop-shadow(0 3px 2px rgba(0,0,0,.3))}
+.t .gl{fill:#fff;fill-opacity:.38;stroke:none;filter:none}.t.neg .gl{display:none}
+.plate{filter:drop-shadow(0 4px 3px rgba(0,0,0,.25))}.piv{filter:drop-shadow(0 0 6px var(--brass))}
+.vx{color:var(--x);font-style:normal}.vy{color:var(--y);font-style:normal}
+.eqline{font-size:1.8rem;letter-spacing:.5px}
+button.gold{background:linear-gradient(135deg,var(--brass),#e8c04a);box-shadow:0 4px 14px rgba(200,160,40,.4)}
+input:focus{outline:2px solid var(--x);outline-offset:1px}
+.result{animation:rise .5s cubic-bezier(.3,1.5,.5,1)}
+@keyframes rise{from{transform:scale(.8);opacity:0}}
+.cf{position:fixed;top:-14px;width:9px;height:14px;border-radius:2px;z-index:50;pointer-events:none;animation:fall 2.4s ease-in forwards}
+@keyframes fall{to{transform:translate(var(--dx),105vh) rotate(var(--r))}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important}}
 </style>
 </head>
 <body>
